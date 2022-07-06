@@ -240,14 +240,17 @@ func resourceKubernetesPersistentVolumeCreate(ctx context.Context, d *schema.Res
 func resourceKubernetesPersistentVolumeWaitUntilPhase(ctx context.Context, d *schema.ResourceData, meta interface{}) (*api.PersistentVolume, error) {
 	name := d.Id()
 
+	pendingPhases := []string{string(api.VolumePending)}
+	targetPhases := []string{string(api.VolumeAvailable), string(api.VolumeBound)}
+
 	conn, err := meta.(KubeClientsets).MainClientset()
 	if err != nil {
 		return nil, err
 	}
 
 	stateConf := &resource.StateChangeConf{
-		Target:  []string{string(api.VolumeAvailable), string(api.VolumeBound)},
-		Pending: []string{string(api.VolumePending)},
+		Target:  targetPhases,
+		Pending: pendingPhases,
 		Timeout: d.Timeout(schema.TimeoutCreate),
 		Refresh: func() (interface{}, string, error) {
 			out, err := conn.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
