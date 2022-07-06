@@ -91,6 +91,7 @@ func resourceKubernetesPersistentVolume() *schema.Resource {
 									string(api.ReadWriteOnce),
 									string(api.ReadOnlyMany),
 									string(api.ReadWriteMany),
+									string(api.ReadWriteOncePod),
 								}, false),
 							},
 							Set: schema.HashString,
