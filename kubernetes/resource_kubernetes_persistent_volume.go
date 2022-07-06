@@ -253,14 +253,6 @@ func resourceKubernetesPersistentVolumeCreate(ctx context.Context, d *schema.Res
 }
 
 func resourceKubernetesPersistentVolumeRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	exists, err := resourceKubernetesPersistentVolumeExists(ctx, d, meta)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	if !exists {
-		d.SetId("")
-		return diag.Diagnostics{}
-	}
 	conn, err := meta.(KubeClientsets).MainClientset()
 	if err != nil {
 		return diag.FromErr(err)
@@ -270,6 +262,10 @@ func resourceKubernetesPersistentVolumeRead(ctx context.Context, d *schema.Resou
 	log.Printf("[INFO] Reading persistent volume %s", name)
 	volume, err := conn.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			d.SetId("")
+			return diag.Diagnostics{}
+		}
 		log.Printf("[DEBUG] Received error: %#v", err)
 		return diag.FromErr(err)
 	}
@@ -350,22 +346,4 @@ func resourceKubernetesPersistentVolumeDelete(ctx context.Context, d *schema.Res
 
 	d.SetId("")
 	return nil
-}
-
-func resourceKubernetesPersistentVolumeExists(ctx context.Context, d *schema.ResourceData, meta interface{}) (bool, error) {
-	conn, err := meta.(KubeClientsets).MainClientset()
-	if err != nil {
-		return false, err
-	}
-
-	name := d.Id()
-	log.Printf("[INFO] Checking persistent volume %s", name)
-	_, err = conn.CoreV1().PersistentVolumes().Get(ctx, name, metav1.GetOptions{})
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return false, nil
-		}
-		log.Printf("[DEBUG] Received error: %#v", err)
-	}
-	return true, err
 }
