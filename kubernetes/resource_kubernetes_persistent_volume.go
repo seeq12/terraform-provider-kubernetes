@@ -225,8 +225,25 @@ func resourceKubernetesPersistentVolumeCreate(ctx context.Context, d *schema.Res
 	}
 	log.Printf("[INFO] Submitted new persistent volume: %#v", vol)
 
-	name := vol.Name
-	d.SetId(name)
+	d.SetId(vol.Name)
+
+	vol, err = resourceKubernetesPersistentVolumeWaitUntilPhase(ctx, d, meta)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	log.Printf("[INFO] Persistent volume %s created", vol.Name)
+
+	return resourceKubernetesPersistentVolumeRead(ctx, d, meta)
+}
+
+func resourceKubernetesPersistentVolumeWaitUntilPhase(ctx context.Context, d *schema.ResourceData, meta interface{}) (*api.PersistentVolume, error) {
+	name := d.Id()
+
+	conn, err := meta.(KubeClientsets).MainClientset()
+	if err != nil {
+		return nil, err
+	}
 
 	stateConf := &resource.StateChangeConf{
 		Target:  []string{string(api.VolumeAvailable), string(api.VolumeBound)},
@@ -246,13 +263,9 @@ func resourceKubernetesPersistentVolumeCreate(ctx context.Context, d *schema.Res
 	}
 
 	out, err := stateConf.WaitForState()
-	if err != nil {
-		return diag.FromErr(err)
-	}
-	vol = out.(*api.PersistentVolume)
-	log.Printf("[INFO] Persistent volume %s created", vol.Name)
+	vol := out.(*api.PersistentVolume)
 
-	return resourceKubernetesPersistentVolumeRead(ctx, d, meta)
+	return vol, err
 }
 
 func resourceKubernetesPersistentVolumeRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
