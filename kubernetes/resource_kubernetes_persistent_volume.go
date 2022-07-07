@@ -31,7 +31,10 @@ func resourceKubernetesPersistentVolume() *schema.Resource {
 		UpdateContext: resourceKubernetesPersistentVolumeUpdate,
 		DeleteContext: resourceKubernetesPersistentVolumeDelete,
 		Importer: &schema.ResourceImporter{
-			StateContext: schema.ImportStatePassthroughContext,
+			StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+				d.Set("wait_until_phase", string(api.VolumeAvailable))
+				return []*schema.ResourceData{d}, nil
+			},
 		},
 
 		Timeouts: &schema.ResourceTimeout{
@@ -198,6 +201,20 @@ func resourceKubernetesPersistentVolume() *schema.Resource {
 					},
 				},
 			},
+			"wait_until_phase": {
+				Type:        schema.TypeString,
+				Description: "Wait for the PersistentVolume to reach at least the given phase. One of \"Pending\", \"Available\", or \"Bound\". Defaults to \"Available\".",
+				Optional:    true,
+				Default:     string(api.VolumeAvailable),
+				ValidateFunc: validation.StringInSlice([]string{
+					string(api.VolumePending),
+					string(api.VolumeAvailable),
+					string(api.VolumeBound),
+					// Intentionally omitted:
+					//   VolumeReleased
+					//   VolumeFailed
+				}, false),
+			},
 		},
 	}
 }
@@ -240,8 +257,26 @@ func resourceKubernetesPersistentVolumeCreate(ctx context.Context, d *schema.Res
 func resourceKubernetesPersistentVolumeWaitUntilPhase(ctx context.Context, d *schema.ResourceData, meta interface{}, vol *api.PersistentVolume) (*api.PersistentVolume, error) {
 	name := d.Id()
 
-	pendingPhases := []string{string(api.VolumePending)}
-	targetPhases := []string{string(api.VolumeAvailable), string(api.VolumeBound)}
+	var pendingPhases []string
+	var targetPhases []string
+
+	waitUntilPhase := d.Get("wait_until_phase").(string)
+
+	// Anything goes.
+	if waitUntilPhase == "" {
+		return vol, nil
+	}
+
+	if waitUntilPhase == string(api.VolumePending) {
+		pendingPhases = []string{string(api.VolumeReleased)}
+		targetPhases = []string{string(api.VolumePending), string(api.VolumeAvailable), string(api.VolumeBound)}
+	} else if waitUntilPhase == string(api.VolumeAvailable) {
+		pendingPhases = []string{string(api.VolumeReleased), string(api.VolumePending)}
+		targetPhases = []string{string(api.VolumeAvailable), string(api.VolumeBound)}
+	} else if waitUntilPhase == string(api.VolumeBound) {
+		pendingPhases = []string{string(api.VolumeReleased), string(api.VolumePending), string(api.VolumeAvailable)}
+		targetPhases = []string{string(api.VolumeBound)}
+	}
 
 	// Eagerly check if the created/updated resource is already in the target phase.
 	if vol != nil {
