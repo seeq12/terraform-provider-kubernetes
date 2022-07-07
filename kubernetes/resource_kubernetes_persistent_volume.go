@@ -227,7 +227,7 @@ func resourceKubernetesPersistentVolumeCreate(ctx context.Context, d *schema.Res
 
 	d.SetId(vol.Name)
 
-	vol, err = resourceKubernetesPersistentVolumeWaitUntilPhase(ctx, d, meta)
+	vol, err = resourceKubernetesPersistentVolumeWaitUntilPhase(ctx, d, meta, vol)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -237,11 +237,20 @@ func resourceKubernetesPersistentVolumeCreate(ctx context.Context, d *schema.Res
 	return resourceKubernetesPersistentVolumeRead(ctx, d, meta)
 }
 
-func resourceKubernetesPersistentVolumeWaitUntilPhase(ctx context.Context, d *schema.ResourceData, meta interface{}) (*api.PersistentVolume, error) {
+func resourceKubernetesPersistentVolumeWaitUntilPhase(ctx context.Context, d *schema.ResourceData, meta interface{}, vol *api.PersistentVolume) (*api.PersistentVolume, error) {
 	name := d.Id()
 
 	pendingPhases := []string{string(api.VolumePending)}
 	targetPhases := []string{string(api.VolumeAvailable), string(api.VolumeBound)}
+
+	// Eagerly check if the created/updated resource is already in the target phase.
+	if vol != nil {
+		for _, targetPhase := range targetPhases {
+			if string(vol.Status.Phase) == targetPhase {
+				return vol, nil
+			}
+		}
+	}
 
 	conn, err := meta.(KubeClientsets).MainClientset()
 	if err != nil {
