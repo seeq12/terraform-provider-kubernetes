@@ -372,6 +372,11 @@ func resourceKubernetesPersistentVolumeUpdate(ctx context.Context, d *schema.Res
 	log.Printf("[INFO] Submitted updated persistent volume: %#v", out)
 	d.SetId(out.Name)
 
+	_, err = resourceKubernetesPersistentVolumeWaitUntilPhase(ctx, d, meta, out)
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
 	return resourceKubernetesPersistentVolumeRead(ctx, d, meta)
 }
 
